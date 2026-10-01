@@ -1,0 +1,11 @@
+services:
+  producer:
+    profiles: [tools]
+    image: log-pipeline-producer:java-1.0.0
+    build:
+      context: ./producer
+    environment:
+      # Producer도 컨테이너에서 실행하므로 내부 listener를 사용합니다.
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:19092,kafka-2:19092,kafka-3:19092
+    volumes:
+      - ./results:/lab/results

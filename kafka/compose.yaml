@@ -1,0 +1,225 @@
+# Kafka 브로커 3개입니다. 각 브로커가 KRaft controller 역할도 함께 맡습니다.
+# ZooKeeper 없이 controller들이 클러스터 메타데이터를 관리합니다.
+# 세 브로커가 같은 호스트에 있으므로 컨테이너 장애 실습은 가능하지만 호스트 장애는 함께 겪습니다.
+
+services:
+  kafka-1:
+    # latest 대신 기존 실행 이미지의 digest를 고정하여 같은 이미지로 재실행합니다. (4.3.1)
+    image: apache/kafka@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+    container_name: kafka-1
+    hostname: kafka-1
+    # 컨테이너 실행 여부와 별개로 서비스 준비 상태를 반복 확인합니다.
+    healthcheck:
+      test: [CMD-SHELL, "KAFKA_HEAP_OPTS='-Xms32m -Xmx128m' /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 15s
+      retries: 30
+      start_period: 30s
+    # 설정 파일 연결 또는 디스크 데이터 보존에 사용하는 볼륨입니다. :ro는 읽기 전용입니다.
+    volumes:
+      - broker-1-data:/tmp/kafka-logs
+    # 호스트 포트:컨테이너 포트입니다. 컨테이너끼리는 호스트 포트 대신 서비스 이름과 내부 포트를 씁니다.
+    ports:
+      - "29092:9092"
+    environment:
+      # 토픽 데이터·consumer offset·KRaft 메타데이터를 저장합니다. 이 경로를 영속 볼륨에 연결합니다.
+      KAFKA_LOG_DIRS: /tmp/kafka-logs
+      KAFKA_NODE_ID: 1
+
+      # KRaft 모드: broker와 controller 역할을 함께 수행합니다.
+      # 메시지 저장(broker)과 클러스터 메타데이터 관리(controller)를 함께 수행합니다.
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      # controller ID@주소 목록입니다. 3개 중 과반수(2개)가 있어야 quorum을 유지합니다.
+      KAFKA_CONTROLLER_QUORUM_VOTERS: >
+        1@kafka-1:9093,
+        2@kafka-2:9093,
+        3@kafka-3:9093
+
+      # 각 listener 이름에 통신 방식을 연결합니다. 현재 PLAINTEXT는 암호화·인증 없는 실습 연결입니다.
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >
+        CONTROLLER:PLAINTEXT,
+        PLAINTEXT:PLAINTEXT,
+        PLAINTEXT_HOST:PLAINTEXT
+
+      # 컨테이너가 실제로 요청을 받는 주소입니다. 내부용 19092, controller용 9093, 호스트 접속용 9092입니다.
+      KAFKA_LISTENERS: >
+        PLAINTEXT://:19092,
+        CONTROLLER://:9093,
+        PLAINTEXT_HOST://:9092
+
+      # 클라이언트에 알려 주는 재접속 주소입니다. 내부는 서비스 이름, 호스트는 localhost와 공개 포트를 사용합니다.
+      KAFKA_ADVERTISED_LISTENERS: >
+        PLAINTEXT://kafka-1:19092,
+        PLAINTEXT_HOST://localhost:29092
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # 세 브로커가 공유하는 클러스터 식별자입니다. 기존 데이터와 함께 임의로 변경하지 않습니다.
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+      # 일반 토픽 기본 복제 수
+      # 별도로 지정하지 않은 토픽의 기본 복제 수입니다. 데이터 사본을 브로커 3개에 둡니다.
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+
+      # 소비 위치를 저장하는 내부 토픽 설정
+      # consumer의 소비 위치를 저장하는 내부 토픽도 3개로 복제합니다.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+
+      # 트랜잭션 상태를 저장하는 내부 토픽 설정
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+
+      # producer가 acks=all을 사용할 때 필요한 최소 동기화 replica 수
+      # acks=all 요청에는 최소 2개의 동기화된 replica가 필요합니다. 부족하면 쓰기를 거부합니다.
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  kafka-2:
+    # latest 대신 기존 실행 이미지의 digest를 고정하여 같은 이미지로 재실행합니다.
+    image: apache/kafka@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+    container_name: kafka-2
+    hostname: kafka-2
+    # 컨테이너 실행 여부와 별개로 서비스 준비 상태를 반복 확인합니다.
+    healthcheck:
+      test: [CMD-SHELL, "KAFKA_HEAP_OPTS='-Xms32m -Xmx128m' /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 15s
+      retries: 30
+      start_period: 30s
+    # 설정 파일 연결 또는 디스크 데이터 보존에 사용하는 볼륨입니다. :ro는 읽기 전용입니다.
+    volumes:
+      - broker-2-data:/tmp/kafka-logs
+    # 호스트 포트:컨테이너 포트입니다. 컨테이너끼리는 호스트 포트 대신 서비스 이름과 내부 포트를 씁니다.
+    ports:
+      - "39092:9092"
+    environment:
+      # 토픽 데이터·consumer offset·KRaft 메타데이터를 저장합니다. 이 경로를 영속 볼륨에 연결합니다.
+      KAFKA_LOG_DIRS: /tmp/kafka-logs
+      KAFKA_NODE_ID: 2
+
+      # 메시지 저장(broker)과 클러스터 메타데이터 관리(controller)를 함께 수행합니다.
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      # controller ID@주소 목록입니다. 3개 중 과반수(2개)가 있어야 quorum을 유지합니다.
+      KAFKA_CONTROLLER_QUORUM_VOTERS: >
+        1@kafka-1:9093,
+        2@kafka-2:9093,
+        3@kafka-3:9093
+
+      # 각 listener 이름에 통신 방식을 연결합니다. 현재 PLAINTEXT는 암호화·인증 없는 실습 연결입니다.
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >
+        CONTROLLER:PLAINTEXT,
+        PLAINTEXT:PLAINTEXT,
+        PLAINTEXT_HOST:PLAINTEXT
+
+      # 컨테이너가 실제로 요청을 받는 주소입니다. 내부용 19092, controller용 9093, 호스트 접속용 9092입니다.
+      KAFKA_LISTENERS: >
+        PLAINTEXT://:19092,
+        CONTROLLER://:9093,
+        PLAINTEXT_HOST://:9092
+
+      # 클라이언트에 알려 주는 재접속 주소입니다. 내부는 서비스 이름, 호스트는 localhost와 공개 포트를 사용합니다.
+      KAFKA_ADVERTISED_LISTENERS: >
+        PLAINTEXT://kafka-2:19092,
+        PLAINTEXT_HOST://localhost:39092
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # 세 브로커가 공유하는 클러스터 식별자입니다. 기존 데이터와 함께 임의로 변경하지 않습니다.
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+      # 별도로 지정하지 않은 토픽의 기본 복제 수입니다. 데이터 사본을 브로커 3개에 둡니다.
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      # consumer의 소비 위치를 저장하는 내부 토픽도 3개로 복제합니다.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      # acks=all 요청에는 최소 2개의 동기화된 replica가 필요합니다. 부족하면 쓰기를 거부합니다.
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  kafka-3:
+    # latest 대신 기존 실행 이미지의 digest를 고정하여 같은 이미지로 재실행합니다.
+    image: apache/kafka@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+    container_name: kafka-3
+    hostname: kafka-3
+    # 컨테이너 실행 여부와 별개로 서비스 준비 상태를 반복 확인합니다.
+    healthcheck:
+      test: [CMD-SHELL, "KAFKA_HEAP_OPTS='-Xms32m -Xmx128m' /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 15s
+      retries: 30
+      start_period: 30s
+    # 설정 파일 연결 또는 디스크 데이터 보존에 사용하는 볼륨입니다. :ro는 읽기 전용입니다.
+    volumes:
+      - broker-3-data:/tmp/kafka-logs
+    # 호스트 포트:컨테이너 포트입니다. 컨테이너끼리는 호스트 포트 대신 서비스 이름과 내부 포트를 씁니다.
+    ports:
+      - "49092:9092"
+    environment:
+      # 토픽 데이터·consumer offset·KRaft 메타데이터를 저장합니다. 이 경로를 영속 볼륨에 연결합니다.
+      KAFKA_LOG_DIRS: /tmp/kafka-logs
+      KAFKA_NODE_ID: 3
+
+      # 메시지 저장(broker)과 클러스터 메타데이터 관리(controller)를 함께 수행합니다.
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      # controller ID@주소 목록입니다. 3개 중 과반수(2개)가 있어야 quorum을 유지합니다.
+      KAFKA_CONTROLLER_QUORUM_VOTERS: >
+        1@kafka-1:9093,
+        2@kafka-2:9093,
+        3@kafka-3:9093
+
+      # 각 listener 이름에 통신 방식을 연결합니다. 현재 PLAINTEXT는 암호화·인증 없는 실습 연결입니다.
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >
+        CONTROLLER:PLAINTEXT,
+        PLAINTEXT:PLAINTEXT,
+        PLAINTEXT_HOST:PLAINTEXT
+
+      # 컨테이너가 실제로 요청을 받는 주소입니다. 내부용 19092, controller용 9093, 호스트 접속용 9092입니다.
+      KAFKA_LISTENERS: >
+        PLAINTEXT://:19092,
+        CONTROLLER://:9093,
+        PLAINTEXT_HOST://:9092
+
+      # 클라이언트에 알려 주는 재접속 주소입니다. 내부는 서비스 이름, 호스트는 localhost와 공개 포트를 사용합니다.
+      KAFKA_ADVERTISED_LISTENERS: >
+        PLAINTEXT://kafka-3:19092,
+        PLAINTEXT_HOST://localhost:49092
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # 세 브로커가 공유하는 클러스터 식별자입니다. 기존 데이터와 함께 임의로 변경하지 않습니다.
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+      # 별도로 지정하지 않은 토픽의 기본 복제 수입니다. 데이터 사본을 브로커 3개에 둡니다.
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      # consumer의 소비 위치를 저장하는 내부 토픽도 3개로 복제합니다.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      # acks=all 요청에는 최소 2개의 동기화된 replica가 필요합니다. 부족하면 쓰기를 거부합니다.
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+# 설정 파일 연결 또는 디스크 데이터 보존에 사용하는 볼륨입니다. :ro는 읽기 전용입니다.
+volumes:
+  broker-1-data:
+    # 이미 존재하는 볼륨을 사용합니다. Compose down -v로 이 볼륨은 삭제되지 않습니다.
+    external: true
+    name: kafka_broker-1-data
+  broker-2-data:
+    # 이미 존재하는 볼륨을 사용합니다. Compose down -v로 이 볼륨은 삭제되지 않습니다.
+    external: true
+    name: kafka_broker-2-data
+  broker-3-data:
+    # 이미 존재하는 볼륨을 사용합니다. Compose down -v로 이 볼륨은 삭제되지 않습니다.
+    external: true
+    name: kafka_broker-3-data

@@ -1,0 +1,41 @@
+# Logstash 컨테이너의 실행 설정입니다.
+# Kafka 소비·로그 정제·ES 출력 규칙은 logstash/pipeline/main.conf에 있습니다.
+
+services:
+  logstash:
+    image: log-pipeline-logstash:9.3.0-kafka-12.1.9
+    build:
+      context: ./logstash #./logstash/Dockerfile 찾아서 build합니다.
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?Load .env with --env-file}
+      LS_JAVA_OPTS: -Xms256m -Xmx256m -XX:ActiveProcessorCount=2
+    mem_limit: 768m
+    # 설정 파일 연결 또는 디스크 데이터 보존에 사용하는 볼륨입니다. :ro는 읽기 전용입니다.
+    volumes:
+      - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - public-ca:/usr/share/logstash/config/certs:ro
+      - logstash-data:/usr/share/logstash/data
+    # 호스트 포트:컨테이너 포트입니다. 컨테이너끼리는 호스트 포트 대신 서비스 이름과 내부 포트를 씁니다.
+    ports:
+      - "127.0.0.1:9610:9600"
+    # 컨테이너 실행 여부와 별개로 서비스 준비 상태를 반복 확인합니다.
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://localhost:9600/_node/stats/pipelines/main > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    # 시작 순서를 정합니다. 아래 condition에 따라 시작·준비 완료·작업 완료 중 무엇을 기다릴지 달라집니다.
+    depends_on:
+      # ES ingest pipeline과 템플릿이 설치된 뒤 소비를 시작해 초기 적재 실패를 피합니다.
+      lab-init:
+        # 초기화 작업이 종료 코드 0으로 끝나야 다음 단계로 진행합니다.
+        condition: service_completed_successfully
+
+# 설정 파일 연결 또는 디스크 데이터 보존에 사용하는 볼륨입니다. :ro는 읽기 전용입니다.
+volumes:
+  logstash-data:
+    # 이미 존재하는 볼륨을 사용합니다. Compose down -v로 이 볼륨은 삭제되지 않습니다.
+    external: true
+    name: prac-ingest-lab_logstash-data

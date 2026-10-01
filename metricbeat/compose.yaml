@@ -1,0 +1,31 @@
+# Metricbeat 컨테이너의 실행 설정입니다. 실제 지표 수집 대상은 metricbeat.yml에 있습니다.
+# 이 실습은 중앙에서 서비스 API를 조회하며, Mac 호스트 시스템 지표는 수집하지 않습니다.
+
+services:
+  metricbeat:
+    image: docker.elastic.co/beats/metricbeat:9.3.0
+    command: ["-e", "--strict.perms=false"]
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?Load .env with --env-file}
+      GOMAXPROCS: "2"
+    mem_limit: 256m
+    # 설정 파일 연결 또는 디스크 데이터 보존에 사용하는 볼륨입니다. :ro는 읽기 전용입니다.
+    volumes:
+      - ./metricbeat/metricbeat.yml:/usr/share/metricbeat/metricbeat.yml:ro
+      - public-ca:/usr/share/metricbeat/certs:ro
+      - metricbeat-data:/usr/share/metricbeat/data
+    # 시작 순서를 정합니다. 아래 condition에 따라 시작·준비 완료·작업 완료 중 무엇을 기다릴지 달라집니다.
+    depends_on:
+      logstash:
+        # 대상 서비스의 healthcheck가 성공할 때까지 기다립니다.
+        condition: service_healthy
+      kibana:
+        # 대상 서비스의 healthcheck가 성공할 때까지 기다립니다.
+        condition: service_healthy
+
+# 설정 파일 연결 또는 디스크 데이터 보존에 사용하는 볼륨입니다. :ro는 읽기 전용입니다.
+volumes:
+  metricbeat-data:
+    # 이미 존재하는 볼륨을 사용합니다. Compose down -v로 이 볼륨은 삭제되지 않습니다.
+    external: true
+    name: prac-ingest-lab_metricbeat-data

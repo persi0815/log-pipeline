@@ -1,0 +1,22 @@
+# Logstash 자체 실행 설정입니다. 메시지 처리 규칙은 pipeline/main.conf에 있습니다.
+
+node.name: prac-ingest-logstash
+# Metricbeat가 내부 네트워크에서 상태 API에 접속할 수 있도록 모든 인터페이스에서 받습니다.
+api.http.host: 0.0.0.0
+api.http.port: 9600
+# 정제·출력을 수행하는 worker 수입니다. 실습용 자원 사용을 줄입니다.
+pipeline.workers: 1
+# worker가 한 번에 처리하는 최대 이벤트 수입니다.
+pipeline.batch.size: 50
+# Elastic Common Schema에 맞춘 플러그인 동작 기준입니다.
+pipeline.ecs_compatibility: v8
+# 이벤트를 메모리 대신 디스크 큐에 보관해 재시작 시 미처리 이벤트를 이어서 처리합니다.
+queue.type: persisted
+# 디스크 큐 최대 크기입니다. 무제한 버퍼가 아니며 가득 차면 입력이 느려지거나 멈춥니다.
+queue.max_bytes: 64mb
+# persistent queue가 사용하는 개별 페이지 파일 크기입니다.
+queue.page_capacity: 16mb
+# 지원되는 비재시도 오류를 DLQ에 보관합니다. 모든 실패를 담거나 자동 재처리하는 기능은 아닙니다.
+dead_letter_queue.enable: true
+# Logstash 자체 모니터링 전송 대신 별도 Metricbeat를 사용합니다.
+xpack.monitoring.enabled: false

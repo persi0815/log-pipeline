@@ -1,0 +1,11 @@
+.env
+.venv/
+producer/.gradle/
+producer/build/
+__pycache__/
+.DS_Store
+results/
+certificates/
+datasets/legacy-es-cluster1/web_traffic.json
+datasets/web_traffic.json
+datasets/legacy-es-cluster1/web_traffic.json

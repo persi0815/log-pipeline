@@ -1,0 +1,61 @@
+# Kafka·Logstash·ES·Kibana API에서 지표를 주기적으로 조회해 ES에 저장합니다.
+# 모니터링 대상과 저장 대상이 같은 ES인 로컬 학습 구성입니다.
+
+name: prac-ingest-monitor
+metricbeat.modules:
+  # 파티션과 consumer group offset을 조회해 Kafka 소비 지연을 관찰합니다.
+  - module: kafka
+    metricsets: [partition, consumergroup]
+    # 10초마다 해당 모듈의 지표를 수집합니다.
+    period: 10s
+    hosts: ["kafka-1:19092", "kafka-2:19092", "kafka-3:19092"]
+    topics: ["prac-lab-logs"]
+    client_id: prac-metricbeat
+  # Logstash의 처리 건수·큐·파이프라인 상태를 수집합니다.
+  - module: logstash
+    metricsets: [node, node_stats]
+    # 일반 지표 수집을 Elastic Stack Monitoring 형식으로 확장합니다.
+    xpack.enabled: true
+    # 10초마다 해당 모듈의 지표를 수집합니다.
+    period: 10s
+    hosts: ["http://logstash:9600"]
+  # ES 노드와 클러스터 상태를 수집합니다.
+  - module: elasticsearch
+    # 일반 지표 수집을 Elastic Stack Monitoring 형식으로 확장합니다.
+    xpack.enabled: true
+    # 20초마다 해당 모듈의 지표를 수집합니다.
+    period: 20s
+    hosts: ["https://es01:9200", "https://es02:9200", "https://es03:9200"]
+    scope: node
+    username: elastic
+    password: "${ELASTIC_PASSWORD}"
+    # certgen이 공유한 공개 CA로 ES 서버 인증서를 검증합니다.
+    ssl.certificate_authorities: ["/usr/share/metricbeat/certs/ca.crt"]
+  # Kibana 서버 상태를 수집합니다.
+  - module: kibana
+    # 일반 지표 수집을 Elastic Stack Monitoring 형식으로 확장합니다.
+    xpack.enabled: true
+    # 20초마다 해당 모듈의 지표를 수집합니다.
+    period: 20s
+    hosts: ["http://kibana:5601"]
+    username: elastic
+    password: "${ELASTIC_PASSWORD}"
+
+# 수집한 지표를 저장하는 ES입니다. 이 ES가 중단되면 모니터링 저장도 영향을 받습니다.
+output.elasticsearch:
+  hosts: ["https://es01:9200"]
+  username: elastic
+  password: "${ELASTIC_PASSWORD}"
+  # certgen이 공유한 공개 CA로 ES 서버 인증서를 검증합니다.
+  ssl.certificate_authorities: ["/usr/share/metricbeat/certs/ca.crt"]
+
+# Metricbeat setup 기능을 사용할 때 접속할 Kibana 주소입니다.
+setup.kibana:
+  host: http://kibana:5601
+  username: elastic
+  password: "${ELASTIC_PASSWORD}"
+setup.template.settings:
+  index.number_of_shards: 1
+  index.number_of_replicas: 1
+logging.level: warning
+logging.metrics.enabled: false

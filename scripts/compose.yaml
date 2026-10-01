@@ -1,0 +1,50 @@
+# 초기화 전용 컨테이너입니다. 작업 완료 후 Exited (0)으로 종료되는 것이 정상입니다.
+# 서비스 준비 여부와 초기화 성공 여부를 구분하여 다음 서비스를 시작합니다.
+
+services:
+  # prac-lab-logs 토픽을 없을 때만 생성합니다. 파티션 3, 복제 3, 최소 ISR 2, 보존 24시간입니다.
+  kafka-init:
+    image: apache/kafka@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+    entrypoint: [/opt/kafka/bin/kafka-topics.sh]
+    command: [--bootstrap-server, "kafka-1:19092", --create, --if-not-exists, --topic, prac-lab-logs, --partitions, "3", --replication-factor, "3", --config, min.insync.replicas=2, --config, retention.ms=86400000]
+    environment:
+      KAFKA_HEAP_OPTS: -Xms32m -Xmx128m
+    # 시작 순서를 정합니다. 아래 condition에 따라 시작·준비 완료·작업 완료 중 무엇을 기다릴지 달라집니다.
+    depends_on:
+      kafka-1:
+        # 대상 서비스의 healthcheck가 성공할 때까지 기다립니다.
+        condition: service_healthy
+      kafka-2:
+        # 대상 서비스의 healthcheck가 성공할 때까지 기다립니다.
+        condition: service_healthy
+      kafka-3:
+        # 대상 서비스의 healthcheck가 성공할 때까지 기다립니다.
+        condition: service_healthy
+
+  # setup.py로 ES ingest pipeline·index template와 Kibana 데이터 뷰·시각화·대시보드를 설치합니다.
+  lab-init:
+    image: python:3.12-slim
+    command: [python, /lab/scripts/setup.py]
+    environment:
+      # 읽기 전용으로 연결한 scripts 폴더에 Python 캐시 파일을 만들지 않습니다.
+      PYTHONDONTWRITEBYTECODE: "1"
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?Set ELASTIC_PASSWORD in .env}
+      # 초기화 컨테이너에서 localhost는 자기 자신이므로 ES 서비스 이름을 사용합니다.
+      ES_URL: https://es01:9200
+      KIBANA_URL: http://kibana:5601
+      CA_PATH: /lab/certificates/ca.crt
+    # 설정 파일 연결 또는 디스크 데이터 보존에 사용하는 볼륨입니다. :ro는 읽기 전용입니다.
+    volumes:
+      - ./scripts:/lab/scripts:ro
+      - ./.env:/lab/.env:ro
+      - ./kibana:/lab/kibana
+      - public-ca:/lab/certificates:ro
+    # 시작 순서를 정합니다. 아래 condition에 따라 시작·준비 완료·작업 완료 중 무엇을 기다릴지 달라집니다.
+    depends_on:
+      # prac-lab-logs 토픽을 없을 때만 생성합니다. 파티션 3, 복제 3, 최소 ISR 2, 보존 24시간입니다.
+      kafka-init:
+        # 초기화 작업이 종료 코드 0으로 끝나야 다음 단계로 진행합니다.
+        condition: service_completed_successfully
+      kibana:
+        # 대상 서비스의 healthcheck가 성공할 때까지 기다립니다.
+        condition: service_healthy

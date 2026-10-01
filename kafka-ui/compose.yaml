@@ -1,0 +1,29 @@
+# 브로커·토픽·메시지·consumer lag를 웹에서 확인하는 도구입니다.
+# 실습 데이터 흐름의 producer나 consumer를 대신하지 않습니다.
+
+services:
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    environment:
+      KAFKA_CLUSTERS_0_NAME: prac-kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:19092,kafka-2:19092,kafka-3:19092
+      # 학습용 UI에서 토픽 생성·삭제 등의 관리 작업을 허용합니다.
+      KAFKA_CLUSTERS_0_READONLY: "false"
+      DYNAMIC_CONFIG_ENABLED: "false"
+      JAVA_OPTS: -Xms128m -Xmx256m -XX:ActiveProcessorCount=2
+    mem_limit: 512m
+    # 호스트 포트:컨테이너 포트입니다. 컨테이너끼리는 호스트 포트 대신 서비스 이름과 내부 포트를 씁니다.
+    ports:
+      - "127.0.0.1:8080:8080"
+    # 컨테이너 실행 여부와 별개로 서비스 준비 상태를 반복 확인합니다.
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    # 시작 순서를 정합니다. 아래 condition에 따라 시작·준비 완료·작업 완료 중 무엇을 기다릴지 달라집니다.
+    depends_on:
+      kafka-init:
+        # 초기화 작업이 종료 코드 0으로 끝나야 다음 단계로 진행합니다.
+        condition: service_completed_successfully

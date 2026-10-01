@@ -1,0 +1,186 @@
+# 01 · 이 실행의 문서 수
+POST prac-lab-logs-*/_count
+{
+  "query": {
+    "term": {
+      "lab.run_id": "20260930T083718Z-0a58b54b"
+    }
+  }
+}
+
+# 02 · ERROR 로그만 조회
+POST prac-lab-logs-*/_search
+{
+  "size": 5,
+  "track_total_hits": true,
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "lab.run_id": "20260930T083718Z-0a58b54b"
+          }
+        },
+        {
+          "term": {
+            "log.level": "error"
+          }
+        }
+      ]
+    }
+  },
+  "_source": [
+    "@timestamp",
+    "service.name",
+    "message",
+    "http.response.status_code"
+  ],
+  "sort": [
+    {
+      "@timestamp": "desc"
+    }
+  ]
+}
+
+# 03 · 서비스별 로그 건수
+POST prac-lab-logs-*/_search
+{
+  "size": 0,
+  "query": {
+    "term": {
+      "lab.run_id": "20260930T083718Z-0a58b54b"
+    }
+  },
+  "aggs": {
+    "services": {
+      "terms": {
+        "field": "service.name",
+        "size": 10
+      }
+    }
+  }
+}
+
+# 04 · 서비스 key와 파티션 분포
+POST prac-lab-logs-*/_search
+{
+  "size": 0,
+  "query": {
+    "term": {
+      "lab.run_id": "20260930T083718Z-0a58b54b"
+    }
+  },
+  "aggs": {
+    "services": {
+      "terms": {
+        "field": "service.name",
+        "size": 10
+      },
+      "aggs": {
+        "partitions": {
+          "terms": {
+            "field": "kafka.partition",
+            "size": 3
+          },
+          "aggs": {
+            "latest_offset": {
+              "max": {
+                "field": "kafka.offset"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+# 05 · 1초마다 적재된 로그 건수
+POST prac-lab-logs-*/_search
+{
+  "size": 0,
+  "query": {
+    "term": {
+      "lab.run_id": "20260930T083718Z-0a58b54b"
+    }
+  },
+  "aggs": {
+    "per_second": {
+      "date_histogram": {
+        "field": "event.ingested",
+        "fixed_interval": "1s",
+        "min_doc_count": 0
+      }
+    }
+  }
+}
+
+# 06 · 지연 통계와 p95 / p99
+POST prac-lab-logs-*/_search
+{
+  "size": 0,
+  "query": {
+    "term": {
+      "lab.run_id": "20260930T083718Z-0a58b54b"
+    }
+  },
+  "aggs": {
+    "latency_stats": {
+      "stats": {
+        "field": "lab.latency_ms"
+      }
+    },
+    "latency_percentiles": {
+      "percentiles": {
+        "field": "lab.latency_ms",
+        "percents": [
+          95,
+          99
+        ]
+      }
+    }
+  }
+}
+
+# 07 · 메시지 검색 + HTTP 500 이상
+POST prac-lab-logs-*/_search
+{
+  "size": 5,
+  "track_total_hits": true,
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "lab.run_id": "20260930T083718Z-0a58b54b"
+          }
+        },
+        {
+          "range": {
+            "http.response.status_code": {
+              "gte": 500
+            }
+          }
+        }
+      ],
+      "must": [
+        {
+          "match": {
+            "message": "demo request"
+          }
+        }
+      ]
+    }
+  },
+  "_source": [
+    "@timestamp",
+    "message",
+    "service.name",
+    "http.response.status_code"
+  ],
+  "sort": [
+    {
+      "@timestamp": "desc"
+    }
+  ]
+}

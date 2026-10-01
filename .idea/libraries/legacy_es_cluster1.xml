@@ -1,0 +1,10 @@
+<component name="libraryTable">
+  <library name="legacy-es-cluster1">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/datasets/legacy-es-cluster1/blogs.json.zip!/" />
+      <root url="jar://$PROJECT_DIR$/datasets/legacy-es-cluster1/web_traffic.json.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
